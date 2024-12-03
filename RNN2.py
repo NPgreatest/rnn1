@@ -180,12 +180,12 @@ for fileName, classNum in files:
 
     # Add test lines
     maxSeqLen, testData, next_idx = addToData(
-        maxSeqLen, testData, fileName, classNum, trainLinesPerFile, shuffledIndices, start_idx=0
+        maxSeqLen, testData, fileName, classNum, testLinesPerFile, shuffledIndices, start_idx=0
     )
 
     # Add training lines
     maxSeqLen, trainData, next_idx = addToData(
-        maxSeqLen, trainData, fileName, classNum, testLinesPerFile, shuffledIndices, start_idx=next_idx
+        maxSeqLen, trainData, fileName, classNum, trainLinesPerFile, shuffledIndices, start_idx=next_idx
     )
 
 # Pad both training and test data
