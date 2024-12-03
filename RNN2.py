@@ -256,12 +256,7 @@ with tf.Session() as sess:
                 inputY: y,
                 initialState: _currentState
             })
-        #
-        # Just for reporting, compute the number of correct predictions
-        # _predictions = sess.run(predictions, feed_dict={
-        #     inputX: x,
-        #     initialState: _currentState
-        # })
+
 
         numCorrect = np.sum(np.argmax(_predictions, axis=1) == y)
         #
