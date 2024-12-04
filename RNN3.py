@@ -1,6 +1,7 @@
 import tensorflow.compat.v1 as tf
 import numpy as np
 import urllib
+from collections import deque
 
 tf.compat.v1.disable_eager_execution()
 
@@ -14,7 +15,7 @@ print(f"TensorFlow version: {tf.__version__}")
 numTrainingIters = 10000
 
 # the number of hidden neurons that hold the state of the RNN
-hiddenUnits = 1000
+hiddenUnits = 500  # Halved from 1000 to 500
 
 # the number of classes that we are learning over
 numClasses = 3
@@ -83,22 +84,22 @@ def addToData(maxSeqLen, data, fileName, classNum, desired_num, shuffledIndices,
 # (same encoding as the last function) and pre-pends every line of
 # text with empty characters so that each line of text is exactly
 # maxSeqLen characters in size
-def pad (maxSeqLen, data):
-   for i in data:
+def pad(maxSeqLen, data):
+    for i in data:
         #
         # access the matrix and the label
         temp = data[i][1]
         label = data[i][0]
         #
-        # get the number of chatacters in this line
-        len = temp.shape[0]
+        # get the number of characters in this line
+        len_seq = temp.shape[0]
         #
         # and then pad so the line is the correct length
-        padding = np.zeros ((maxSeqLen - len,256))
-        data[i] = (label, np.transpose (np.concatenate ((padding, temp), axis = 0)))
-   #
-   # return the new data set
-   return data
+        padding = np.zeros((maxSeqLen - len_seq, 256))
+        data[i] = (label, np.transpose(np.concatenate((padding, temp), axis=0)))
+    #
+    # return the new data set
+    return data
 
 
 # this generates a new batch of training data of size batchSize from the
@@ -122,30 +123,11 @@ def generateDataRNN(maxSeqLen, data):
     return (x, y)
 
 
-# this also generates a new batch of training data, but it represents
-# the data as a NumPy array with dimensions [batchSize, 256 * maxSeqLen]
-# where for each data point, all characters have been appended.  Useful
-# for feed-forward network training
-def generateDataFeedForward(maxSeqLen, data):
-    #
-    # randomly sample batchSize lines of text
-    myInts = np.random.randint(0, len(data), batchSize)
-    #
-    # stack all of the text into a matrix of one-hot characters
-    x = np.stack(data[i][1].flatten() for i in myInts.flat)
-    #
-    # and stack all of the labels into a vector of labels
-    y = np.stack(np.array((data[i][0])) for i in myInts.flat)
-    #
-    # return the pair
-    return (x, y)
-
-
 trainData = {}
 testData = {}
 maxSeqLen = 0
 
-
+# List of input files and their class numbers
 files = [
     ("https://s3.amazonaws.com/chrisjermainebucket/text/Holmes.txt", 0),
     ("https://s3.amazonaws.com/chrisjermainebucket/text/war.txt", 1),
@@ -190,8 +172,9 @@ inputY = tf.placeholder(tf.int32, [batchSize])
 initialState = tf.placeholder(tf.float32, [batchSize, hiddenUnits])
 
 # the weight matrix that maps the inputs and hidden state to a set of values
-Wfir = tf.Variable(np.random.normal(0, 0.01, (hiddenUnits + 256, hiddenUnits)), dtype=tf.float32)
-Wsec = tf.Variable(np.random.normal(0, 0.01, (hiddenUnits, hiddenUnits)), dtype=tf.float32)
+# time warping: (256 + hiddenUnits + hiddenUnits, hiddenUnits)
+Wfir = tf.Variable(np.random.normal(0, 0.01, (256 + hiddenUnits + hiddenUnits, hiddenUnits)), dtype=tf.float32)
+# Remove Wsec var
 
 # weights and bias for the final classification
 W2 = tf.Variable(np.random.normal(0, 0.05, (hiddenUnits, numClasses)), dtype=tf.float32)
@@ -202,15 +185,26 @@ b2 = tf.Variable(np.zeros((1, numClasses)), dtype=tf.float32)
 # every input sequence
 sequenceOfLetters = tf.unstack(inputX, axis=2)
 
-# now we implement the forward pass
+# Implement time_warp_buffer
+time_warp_buffer = tf.Variable(np.zeros((batchSize, hiddenUnits)), dtype=tf.float32, trainable=False)
 currentState = initialState
+
+state_buffer = deque(maxlen=10)
+for i in range(10):
+    state_buffer.append(initialState)
+
 for timeTick in sequenceOfLetters:
+    if len(state_buffer) < 10:
+        state_10_ticks_ago = initialState
+    else:
+        state_10_ticks_ago = state_buffer.popleft()
+
     #
     # concatenate the state with the input, then compute the next state
-    inputPlusState = tf.concat([timeTick, currentState], 1)
-    next_state = tf.tanh(tf.matmul(inputPlusState, Wfir))
-    last_state = tf.tanh(tf.matmul(next_state, Wsec))
-    currentState = last_state
+    inputPlusStates = tf.concat([timeTick, currentState, state_10_ticks_ago], axis=1)
+    next_state = tf.tanh(tf.matmul(inputPlusStates, Wfir))
+    state_buffer.append(currentState)
+    currentState = next_state
 
 # compute the set of outputs
 outputs = tf.matmul(currentState, W2) + b2
@@ -245,15 +239,18 @@ with tf.Session() as sess:
                 inputY: y,
                 initialState: _currentState
             })
-
-
         numCorrect = np.sum(np.argmax(_predictions, axis=1) == y)
-        #
-        # print out to the screen
+
         if (epoch + 1) % 100 == 0 or epoch == 0:
+            # _predictions = sess.run(
+            #     predictions,
+            #     feed_dict={
+            #         inputX: x,
+            #         initialState: _currentState
+            #     })
+            # numCorrect = np.sum(np.argmax(_predictions, axis=1) == y)
             print("Step", epoch, "Loss", _totalLoss, "Correct", numCorrect, "out of", batchSize)
 
-    # ------------------------------------------------------
     testBatchSize = 100
     totalTestLoss = 0.0
     totalTestCorrect = 0
@@ -284,4 +281,4 @@ with tf.Session() as sess:
     averageTestLoss = totalTestLoss / numTestSamples
 
     print(
-        f"Loss for 3000 randomly chosen documents is {averageTestLoss:.4f}, number of correct labels is {totalTestCorrect} out of 3000")
+        f"Loss for {numTestSamples} randomly chosen documents is {averageTestLoss:.4f}, number of correct labels is {totalTestCorrect} out of {numTestSamples}")
