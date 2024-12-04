@@ -13,10 +13,8 @@ print(f"TensorFlow version: {tf.__version__}")
 # Number of iterations to train for
 numTrainingIters = 10000
 
-# Number of hidden neurons in each hidden layer
-# You can experiment with these values
 hiddenUnits1 = 1024*2 # First hidden layer
-hiddenUnits2 = 512 *2  # Second hidden layer (set to None if using only one hidden layer)
+hiddenUnits2 = 512 *2  # Second hidden layer
 
 # Number of classes to predict
 numClasses = 3
