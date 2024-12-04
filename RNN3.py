@@ -242,13 +242,6 @@ with tf.Session() as sess:
         numCorrect = np.sum(np.argmax(_predictions, axis=1) == y)
 
         if (epoch + 1) % 100 == 0 or epoch == 0:
-            # _predictions = sess.run(
-            #     predictions,
-            #     feed_dict={
-            #         inputX: x,
-            #         initialState: _currentState
-            #     })
-            # numCorrect = np.sum(np.argmax(_predictions, axis=1) == y)
             print("Step", epoch, "Loss", _totalLoss, "Correct", numCorrect, "out of", batchSize)
 
     testBatchSize = 100
